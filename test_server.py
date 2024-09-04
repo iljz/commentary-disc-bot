@@ -2,6 +2,7 @@ import socket
 import threading
 from PIL import Image
 import io
+import google.generativeai as genai
 # import discord
 
 ## Discord bot setup
