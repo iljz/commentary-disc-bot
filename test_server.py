@@ -3,6 +3,11 @@ import threading
 from PIL import Image
 import io
 import google.generativeai as genai
+import os
+from dotenv import load_dotenv
+load_dotenv(".env.local")
+
+import markdown
 # import discord
 
 ## Discord bot setup
@@ -15,6 +20,35 @@ PORT = 65432        # Port to listen on
 
 # Flag to control the server loop
 server_running = True
+
+genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+
+# Create the model
+generation_config = {
+  "temperature": 0.9,
+  "top_p": 0.95,
+  "top_k": 64,
+  "max_output_tokens": 1024,
+  "response_mime_type": "text/plain",
+}
+
+model = genai.GenerativeModel(
+  model_name="gemini-1.5-flash",
+  generation_config=generation_config,
+  # safety_settings = Adjust safety settings
+  # See https://ai.google.dev/gemini-api/docs/safety-settings
+)
+
+prompt = "Descript the image."
+
+def upload_to_gemini(path, mime_type=None):
+  """
+  Uploads the given file to Gemini.
+  See https://ai.google.dev/gemini-api/docs/prompting_with_media
+  """
+  file = genai.upload_file(path, mime_type=mime_type)
+  print(f"Uploaded file '{file.display_name}' as: {file.uri}")
+  return file
 
 def handle_client_connection(client_socket):
     try:
@@ -37,16 +71,14 @@ def handle_client_connection(client_socket):
                 received_data += packet
             received_size = len(received_data)
             print(f"Received size: {received_size}")
+            print("file type", type(received_data))
             
             if received_size == size:
                 # Assuming the data is an image in bytes
-                image_data = io.BytesIO(received_data)
-                image = Image.open(image_data)
-                
-                # Process the image (e.g., convert to grayscale)
-                grayscale_image = image.convert('L')
-                grayscale_image.show()  # Display for testing
-
+                image_stream = io.BytesIO(received_data)
+                image = Image.open(image_stream)
+                response = model.generate_content([image, prompt])
+                print(response.text)
                 # Here you could send a message or image to a Discord channel
                 # await bot_channel.send("Processed an image!")  # Example (inside a coroutine)
             else:
