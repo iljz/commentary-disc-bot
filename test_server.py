@@ -7,22 +7,27 @@ import os
 from dotenv import load_dotenv
 import discord
 from discord.ext import commands
-from google.cloud import texttospeech
+# from google.cloud import texttospeech
 
 load_dotenv(".env.local")
 FFMPEG_PATH = os.environ["FFMPEG_PATH"]
 
-# Instantiates a client
-tts_client = texttospeech.TextToSpeechClient()
-# Build the voice request, select the language code ("en-US") and the ssml
-# voice gender ("neutral")
-voice = texttospeech.VoiceSelectionParams(
-    language_code="en-US", ssml_gender=texttospeech.SsmlVoiceGender.NEUTRAL
-)
-# Select the type of audio file you want returned
-audio_config = texttospeech.AudioConfig(
-    audio_encoding=texttospeech.AudioEncoding.MP3
-)
+# Load system Prompt
+with open('sysprompt.txt', encoding='utf8') as file_object:
+    sysprompt = file_object.read()
+
+
+# # Instantiates a client
+# tts_client = texttospeech.TextToSpeechClient()
+# # Build the voice request, select the language code ("en-US") and the ssml
+# # voice gender ("neutral")
+# voice = texttospeech.VoiceSelectionParams(
+#     language_code="en-US", ssml_gender=texttospeech.SsmlVoiceGender.NEUTRAL
+# )
+# # Select the type of audio file you want returned
+# audio_config = texttospeech.AudioConfig(
+#     audio_encoding=texttospeech.AudioEncoding.MP3
+# )
 
 # Discord bot setup
 intents = discord.Intents.default()
@@ -67,26 +72,26 @@ async def leave(ctx):
 async def process_image_and_speak(image_data, text_channel, voice_channel):
     # Process image with Gemini
     image = Image.open(io.BytesIO(image_data))
-    response = model.generate_content([image, "Describe the image."])
-    
+    response = model.generate_content([image, sysprompt])
+
     # Send text response
     await text_channel.send(response.text)
-    
-    # Generate speech with Google TTS
-    synthesis_input = texttospeech.SynthesisInput(text=response.text)
-    tts_response = tts_client.synthesize_speech(input=synthesis_input, voice=voice, audio_config=audio_config)
-    
-    # Play audio in voice channel
-    voice_client = discord.utils.get(bot.voice_clients, channel=voice_channel)
-    if voice_client and voice_client.is_connected():
-        if os.path.exists(FFMPEG_PATH):
-            audio_source = io.BytesIO(tts_response.audio_content)
-            voice_client.play(discord.FFmpegPCMAudio(audio_source, pipe=True, executable=FFMPEG_PATH))
-        else:
-            await text_channel.send(f"FFmpeg not found at {FFMPEG_PATH}. Please check the path.")
-            return
-    else:
-        await text_channel.send("Bot is not connected to the voice channel. Use !join to connect the bot.")
+
+    # # Generate speech with Google TTS
+    # synthesis_input = texttospeech.SynthesisInput(text=response.text)
+    # tts_response = tts_client.synthesize_speech(input=synthesis_input, voice=voice, audio_config=audio_config)
+    #
+    # # Play audio in voice channel
+    # voice_client = discord.utils.get(bot.voice_clients, channel=voice_channel)
+    # if voice_client and voice_client.is_connected():
+    #     if os.path.exists(FFMPEG_PATH):
+    #         audio_source = io.BytesIO(tts_response.audio_content)
+    #         voice_client.play(discord.FFmpegPCMAudio(audio_source, pipe=True, executable=FFMPEG_PATH))
+    #     else:
+    #         await text_channel.send(f"FFmpeg not found at {FFMPEG_PATH}. Please check the path.")
+    #         return
+    # else:
+    #     await text_channel.send("Bot is not connected to the voice channel. Use !join to connect the bot.")
 
 def handle_client_connection(client_socket):
     try:

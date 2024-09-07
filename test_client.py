@@ -5,7 +5,7 @@ import time
 
 HOST = '127.0.0.1'  # Server's IP address
 PORT = 65432        # Server's port
-interval = 20       # Interval in seconds
+interval = 5       # Interval in seconds
 
 def capture_and_send():
     # Capture the screen
