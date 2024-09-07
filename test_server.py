@@ -7,11 +7,22 @@ import os
 from dotenv import load_dotenv
 import discord
 from discord.ext import commands
-from transformers import AutoProcessor, BarkModel
-import scipy
-import numpy as np
+from google.cloud import texttospeech
 
 load_dotenv(".env.local")
+FFMPEG_PATH = os.environ["FFMPEG_PATH"]
+
+# Instantiates a client
+tts_client = texttospeech.TextToSpeechClient()
+# Build the voice request, select the language code ("en-US") and the ssml
+# voice gender ("neutral")
+voice = texttospeech.VoiceSelectionParams(
+    language_code="en-US", ssml_gender=texttospeech.SsmlVoiceGender.NEUTRAL
+)
+# Select the type of audio file you want returned
+audio_config = texttospeech.AudioConfig(
+    audio_encoding=texttospeech.AudioEncoding.MP3
+)
 
 # Discord bot setup
 intents = discord.Intents.default()
@@ -28,11 +39,6 @@ generation_config = {
     "max_output_tokens": 1024,
 }
 model = genai.GenerativeModel(model_name="gemini-1.5-flash", generation_config=generation_config)
-
-# Bark setup
-processor = AutoProcessor.from_pretrained("suno/bark")
-bark_model = BarkModel.from_pretrained("suno/bark")
-voice_preset = "v2/en_speaker_6"
 
 # Server setup
 HOST = '127.0.0.1'
@@ -66,18 +72,21 @@ async def process_image_and_speak(image_data, text_channel, voice_channel):
     # Send text response
     await text_channel.send(response.text)
     
-    # Generate speech with Bark
-    inputs = processor(response.text, voice_preset=voice_preset)
-    audio_array = bark_model.generate(**inputs)
-    audio_array = audio_array.cpu().numpy().squeeze()
-    
-    # Save audio to file
-    sample_rate = bark_model.generation_config.sample_rate
-    scipy.io.wavfile.write("response.wav", rate=sample_rate, data=audio_array)
+    # Generate speech with Google TTS
+    synthesis_input = texttospeech.SynthesisInput(text=response.text)
+    tts_response = tts_client.synthesize_speech(input=synthesis_input, voice=voice, audio_config=audio_config)
     
     # Play audio in voice channel
-    if voice_channel.is_connected():
-        voice_channel.play(discord.FFmpegPCMAudio("response.wav"))
+    voice_client = discord.utils.get(bot.voice_clients, channel=voice_channel)
+    if voice_client and voice_client.is_connected():
+        if os.path.exists(FFMPEG_PATH):
+            audio_source = io.BytesIO(tts_response.audio_content)
+            voice_client.play(discord.FFmpegPCMAudio(audio_source, pipe=True, executable=FFMPEG_PATH))
+        else:
+            await text_channel.send(f"FFmpeg not found at {FFMPEG_PATH}. Please check the path.")
+            return
+    else:
+        await text_channel.send("Bot is not connected to the voice channel. Use !join to connect the bot.")
 
 def handle_client_connection(client_socket):
     try:
@@ -97,6 +106,7 @@ def handle_client_connection(client_socket):
             if len(received_data) == size:
                 text_channel = bot.get_channel(int(os.environ["TEXT_CHANNEL_ID"]))
                 voice_channel = bot.get_channel(int(os.environ["VOICE_CHANNEL_ID"]))
+                print(voice_channel)
                 bot.loop.create_task(process_image_and_speak(received_data, text_channel, voice_channel))
             else:
                 print("Error: Incomplete image data received")
