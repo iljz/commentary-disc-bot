@@ -5,89 +5,104 @@ import io
 import google.generativeai as genai
 import os
 from dotenv import load_dotenv
+import discord
+from discord.ext import commands
+from transformers import AutoProcessor, BarkModel
+import scipy
+import numpy as np
+
 load_dotenv(".env.local")
 
-import markdown
-# import discord
+# Discord bot setup
+intents = discord.Intents.default()
+intents.message_content = True
+intents.voice_states = True
+bot = commands.Bot(command_prefix='!', intents=intents)
 
-## Discord bot setup
-# intents = discord.Intents.default()
-# bot = discord.Bot(intents=intents)
+# Gemini setup
+genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+generation_config = {
+    "temperature": 0.9,
+    "top_p": 0.95,
+    "top_k": 64,
+    "max_output_tokens": 1024,
+}
+model = genai.GenerativeModel(model_name="gemini-1.5-flash", generation_config=generation_config)
+
+# Bark setup
+processor = AutoProcessor.from_pretrained("suno/bark")
+bark_model = BarkModel.from_pretrained("suno/bark")
+voice_preset = "v2/en_speaker_6"
 
 # Server setup
-HOST = '127.0.0.1'  # Localhost
-PORT = 65432        # Port to listen on
-
-# Flag to control the server loop
+HOST = '127.0.0.1'
+PORT = 65432
 server_running = True
 
-genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+@bot.event
+async def on_ready():
+    print(f'{bot.user} has connected to Discord!')
 
-# Create the model
-generation_config = {
-  "temperature": 0.9,
-  "top_p": 0.95,
-  "top_k": 64,
-  "max_output_tokens": 1024,
-  "response_mime_type": "text/plain",
-}
+@bot.command()
+async def join(ctx):
+    if ctx.author.voice:
+        channel = ctx.author.voice.channel
+        await channel.connect()
+    else:
+        await ctx.send("You need to be in a voice channel to use this command.")
 
-model = genai.GenerativeModel(
-  model_name="gemini-1.5-flash",
-  generation_config=generation_config,
-  # safety_settings = Adjust safety settings
-  # See https://ai.google.dev/gemini-api/docs/safety-settings
-)
+@bot.command()
+async def leave(ctx):
+    if ctx.voice_client:
+        await ctx.voice_client.disconnect()
+    else:
+        await ctx.send("I'm not in a voice channel.")
 
-prompt = "Descript the image."
-
-def upload_to_gemini(path, mime_type=None):
-  """
-  Uploads the given file to Gemini.
-  See https://ai.google.dev/gemini-api/docs/prompting_with_media
-  """
-  file = genai.upload_file(path, mime_type=mime_type)
-  print(f"Uploaded file '{file.display_name}' as: {file.uri}")
-  return file
+async def process_image_and_speak(image_data, text_channel, voice_channel):
+    # Process image with Gemini
+    image = Image.open(io.BytesIO(image_data))
+    response = model.generate_content([image, "Describe the image."])
+    
+    # Send text response
+    await text_channel.send(response.text)
+    
+    # Generate speech with Bark
+    inputs = processor(response.text, voice_preset=voice_preset)
+    audio_array = bark_model.generate(**inputs)
+    audio_array = audio_array.cpu().numpy().squeeze()
+    
+    # Save audio to file
+    sample_rate = bark_model.generation_config.sample_rate
+    scipy.io.wavfile.write("response.wav", rate=sample_rate, data=audio_array)
+    
+    # Play audio in voice channel
+    if voice_channel.is_connected():
+        voice_channel.play(discord.FFmpegPCMAudio("response.wav"))
 
 def handle_client_connection(client_socket):
     try:
         while server_running:
-            # Read the size of the incoming image first
             size_data = client_socket.recv(4)
             if not size_data:
                 return
             
-            # Convert size data to an integer (assuming 8 bytes for size)
             size = int.from_bytes(size_data, byteorder='big')
-            print("Received image size:", size)
-
-            # Now read the image data based on the reported size
             received_data = b""
             while len(received_data) < size:
-                packet = client_socket.recv(4096)  # Adjust buffer size as needed
+                packet = client_socket.recv(4096)
                 if not packet:
                     break
                 received_data += packet
-            received_size = len(received_data)
-            print(f"Received size: {received_size}")
-            print("file type", type(received_data))
             
-            if received_size == size:
-                # Assuming the data is an image in bytes
-                image_stream = io.BytesIO(received_data)
-                image = Image.open(image_stream)
-                response = model.generate_content([image, prompt])
-                print(response.text)
-                # Here you could send a message or image to a Discord channel
-                # await bot_channel.send("Processed an image!")  # Example (inside a coroutine)
+            if len(received_data) == size:
+                text_channel = bot.get_channel(int(os.environ["TEXT_CHANNEL_ID"]))
+                voice_channel = bot.get_channel(int(os.environ["VOICE_CHANNEL_ID"]))
+                bot.loop.create_task(process_image_and_speak(received_data, text_channel, voice_channel))
             else:
                 print("Error: Incomplete image data received")
-                print("Expected size:", size)
-                print("Received size:", len(received_data))
-        client_socket.close()
     except Exception as e:
         print(f"Error: {e}")
+    finally:
         client_socket.close()
 
 def start_server():
@@ -100,10 +115,7 @@ def start_server():
         while server_running:
             client_socket, addr = server.accept()
             print(f"Accepted connection from {addr}")
-            client_handler = threading.Thread(
-                target=handle_client_connection,
-                args=(client_socket,)
-            )
+            client_handler = threading.Thread(target=handle_client_connection, args=(client_socket,))
             client_handler.start()
     except Exception as e:
         print(f"Error: {e}")
@@ -111,18 +123,6 @@ def start_server():
         server.close()
 
 if __name__ == '__main__':
-    try:
-        start_server()
-    except KeyboardInterrupt:
-        print("Shutting down server...")
-        server_running = False
-    # # Running the server in a separate thread to avoid blocking the bot
-    # server_thread = threading.Thread(target=start_server)
-    # server_thread.start()
-
-    # # Discord bot event
-    # @bot.event
-    # async def on_ready():
-    #     print(f'Logged in as {bot.user}')
-
-    # bot.run('YOUR_DISCORD_BOT_TOKEN')
+    server_thread = threading.Thread(target=start_server)
+    server_thread.start()
+    bot.run(os.environ["DISCORD_BOT_TOKEN"])
