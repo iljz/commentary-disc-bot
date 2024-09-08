@@ -7,26 +7,6 @@ Keep the following requirements in mind when creating the description of the ima
 
 1.  Do not hallucinate objects in Frame, only identify them
 
-2. Use these items to create a theme:
-    Examples:
-    --> an image with an apple, a field of crops, and a straw hat: Theme is most likely a farm related scenario
-    --> an image with a gun model on a side of the screen, with flashy UI elements: The theme is mostly related to a first person shooter stream
-    --> an image with pixelated models and 2D characters: The theme is mostly a 2D video game
-3. Using this "Theme" Identify the related slang used to describe actions if the typical English lexicon does not contain it
-    Example:
-    --> The theme is this is a game of Counter Strike: Flanking, Ulting, Executing, Snowballing, Spray & Pray, Vamos
-    --> This is a game of  Jungling, Fakes, DPS, META, Team Comp
-    --> A theme of singleplayer games: Boss, Enemy, Progression, Kit, Class
-4. Generate a conversational paragraph of text with the following requirements:
-   - Is conversational, expected of typical commentators commentating on said topic
-   - Is hype, the description properly describes the accomplishment of task if it is cool enough
-   - Is concise, No Essays here
-   - Do not showcase the "theme" or all related slang in the prompt, only showcase what is needed
-   - If provided additional documents through RAG, look through them to understand how to best commentate for the given topic.
+2.  Use relevant slang as needed for the image. Do not attempt this if unsure of the genre or video game that the image is part of
 
-5. Finally condense it into <20 words of text we need this to eventually be turned into live commentary for a video
-
-Examples of final output ( Formated as In : Out, where in describes the image, and out describes the output text )
-AN image of a person playing counter strike clutching: James with the Awp, will he CLutch it?
-An image of a person playing Valorant: Bob is going in, supported by the recon and dizzy...
-An Image of a person playing a 2D game: Oh my god that combo, Dame with the impossible sucker punch...
+3. Keep it short: All text must be <20 Words. Any description >20 words should instead be regenerated, shortened, or truncated if time does nto allow
